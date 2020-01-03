@@ -20,9 +20,11 @@ FreeRTOS port of linuxptp(ptp4l)
     while doing RX via netif->input()
     while doing TX via low_level_output() 
 ## 5. Polling mechanism with Lwip
-    ptp4l uses poll to wait for timer events as well as network events. Lwip
-    has polling only for socket fd. The timers in freertos are implemented as 
+    ptp4l uses poll to wait for timer events as well as network events. 
+    Lwip has polling only for socket fd. The timers in freertos are implemented as 
     sudo socket so same select() call can be used for network/timer events
+    
+    See linuxptp-1.6/freertos_poll.c/freertos_poll()
     See lwip-1.4.1/src/api/sockets.c/lwip_post_timer_event() and linuxptp-1.6/freertos_timers.c/timer_callback()
  
 
