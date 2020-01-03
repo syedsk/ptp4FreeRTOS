@@ -1,5 +1,7 @@
 # ptp4FreeRTOS
-FreeRTOS port of linuxptp(ptp4l)
+FreeRTOS port of linuxptp(ptp4l). 
+Ideally suited to run PTP4L on a dedicated core (say cortex-R5). 
+
 # Features
 1. Supports linuxptp v1.6
 2. Supports multi instance (currently tested with two ptp4l instances)
@@ -7,7 +9,7 @@ FreeRTOS port of linuxptp(ptp4l)
 4. Changes are needed in LWIP to support timestamping. Included in this repo as a LWIP patch.
 5. Tested with gPTP profile only
 6. HW Tested with:
-    Xilinx TSN IP reference design on zcu102 board. 
+    Xilinx TSN IP reference design on zcu102 board. FreeRTOS running on R5. 
 
 # Porting Guide
 ## 1. clock_adjtime is implemented in missing.h
