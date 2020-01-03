@@ -11,6 +11,11 @@ Ideally suited to run PTP4L on a dedicated core (say cortex-R5).
 6. HW Tested with:
     Xilinx TSN IP reference design on zcu102 board. FreeRTOS running on R5. 
 
+# Building
+   See the template makefile. You need to cross-compile for you target 
+   Link LWiP(with the patches) and freertos libraries to generate freertos elf 
+   There is a template emac_driver (which registers two mac netif)
+
 # Porting Guide
 ## 1. clock_adjtime
      clock_adjtime is implemented in missing.h
