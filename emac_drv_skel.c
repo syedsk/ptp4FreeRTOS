@@ -12,7 +12,27 @@
 unsigned int xInsideISR = 0;
 #endif
 
+static void emac_drv_set_ts(struct netif *netif, struct pbuf *p)
+{
+	struct emac_drv_local *cb = (struct emac_drv_local *) netif->state;
 
+ 
+	/* set ts  from hw */
+	p->ts_sec = captured_sec;
+	p->ts_nsec = captured_ns;
+
+}
+
+static void emac_drv_recv(struct netif *netif)
+{
+	emac_drv_set_ts(netif, p);
+
+	if( netif->input(p, netif) != ERR_OK )
+	{
+		pbuf_free(p);
+		p = NULL;
+	}
+}
 #if !NO_SYS
 /*
  * The input thread calls lwIP to process any received packets.
@@ -86,6 +106,7 @@ static err_t low_level_init(struct netif *netif)
 static err_t emac_drv_xmit(struct netif *netif, struct pbuf *p)
 {
 	/* your emac driver xmit */
+	emac_drv_set_ts(netif, p);
 }
 /*
  * low_level_output():
