@@ -6,6 +6,8 @@ FreeRTOS port of linuxptp(ptp4l)
 3. Uses lwip-1.4.1
 4. Changes are needed in LWIP to support timestamping. Included in this repo as a LWIP patch.
 5. Tested with gPTP profile only
+6. HW Tested with:
+    Xilinx TSN IP reference design on zcu102 board. 
 
 # Porting Guide
 ## 1. clock_adjtime is implemented in missing.h
