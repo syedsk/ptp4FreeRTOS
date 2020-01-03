@@ -1,0 +1,39 @@
+
+FREERTOS_SDK := <path_to_freertos_dir>
+SDK_PRJ_NAME := freertos901_xilinx
+
+LWIP := <path_to_lwip>/include
+
+export EXTRA_CFLAGS := -D__FREERTOS__  -I$(LWIP) 
+# compiler should be in your PATH
+export CROSS_COMPILE := armr5-none-eabi-
+
+#Libraries to add
+LIBS := -Wl,--start-group,-lfreertos,-lgcc,-lc,-lm,-llwip4,--end-group
+
+ptp4l := linuxptp-1.6
+
+EXTRA_CFLAGS += -I$(ptp4l)
+
+USER_OBJS += main_tmplt.o
+USER_OBJS += emac_drv_skel.o
+default: ptp_freertos.elf
+
+PTP_OBJS = $(ptp4l)/*.o
+
+#Point to freertos linker script
+FR_LDSCRIPT := lscript.ld 
+
+%.o:%.c
+	$(CROSS_COMPILE)gcc  -DARMR5 -Wall -O0 -g3 -c -fmessage-length=0 -mcpu=cortex-r5 -I$(FREERTOS_SDK)/include $(EXTRA_CFLAGS) -o "$@" "$<"
+
+$(PTP_OBJS):
+	make -C $(ptp4l)
+
+ptp_freertos.elf: $(PTP_OBJS) $(USER_OBJS)
+	$(CROSS_COMPILE)gcc -Wl,-T -Wl,$(FR_LDSCRIPT) -L$(FREERTOS_SDK)/lib -o $@ $(PTP_OBJS) $(USER_OBJS) $(LIBS)
+
+
+clean:
+	rm -f *.o *.elf
+	make -C $(ptp4l) clean
