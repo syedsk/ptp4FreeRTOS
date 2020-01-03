@@ -19,9 +19,9 @@ Ideally suited to run PTP4L on a dedicated core (say cortex-R5).
 ## 3. HW Timestamping Support 
     Two new APIs lwip_send_with_ts and lwip_recv_with_ts to support timestamping.
     See lwip-1.4.1/src/api/sockets.c
-    src/include/lwip/pbuf.h/struct pbuf has two new elements:
-    u32_t ts_sec;
-    u32_t ts_nsec;
+    lwip-1.4.1/src/include/lwip/pbuf.h/struct pbuf has two new elements:
+      u32_t ts_sec;
+      u32_t ts_nsec;
     These values need to be set in your lwip emac driver implementation:
     while doing RX via netif->input()
     while doing TX via low_level_output() 
