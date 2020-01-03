@@ -17,6 +17,7 @@ Ideally suited to run PTP4L on a dedicated core (say cortex-R5).
     These are currenly implemented as direct adjustment of RTC clock of Xilnx TSN HW
     This must be changed for the target HW/RTC
 ## 3. Two new APIs lwip_send_with_ts and lwip_recv_with_ts to support timestamping.
+    See lwip-1.4.1/src/api/sockets.c
 ## 4. src/include/lwip/pbuf.h/struct pbuf has two new elements:
     u32_t ts_sec;
     u32_t ts_nsec;
