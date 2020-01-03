@@ -1,0 +1,590 @@
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/api/api_lib.c /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/api/api_lib.c
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/api/api_lib.c	2018-02-14 17:31:58.339594000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/api/api_lib.c	2018-01-30 11:41:40.661706500 +0530
+@@ -442,6 +442,31 @@
+   return netconn_recv_data(conn, (void **)new_buf);
+ }
+ 
++err_t
++netconn_recv_raw(struct netconn *conn, struct netbuf **new_buf)
++{
++  struct netbuf *buf = NULL;
++
++  sys_arch_mbox_fetch(&conn->recvmbox, (void **) &buf, 0);
++
++  *new_buf = buf;
++
++  return ERR_OK;
++
++}
++
++err_t
++netconn_recv_oob(struct netconn *conn, struct oob_buf **new_buf)
++{
++  struct oob_buf *buf = NULL;
++
++  sys_arch_mbox_fetch(&conn->errmbox, (void **) &buf, 0);
++
++  *new_buf = buf;
++
++  return ERR_OK;
++}
++
+ /**
+  * Receive data (in form of a netbuf containing a packet buffer) from a netconn
+  *
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/api/api_msg.c /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/api/api_msg.c
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/api/api_msg.c	2018-02-14 17:31:58.341577000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/api/api_msg.c	2018-01-30 12:28:31.311439000 +0530
+@@ -66,6 +66,7 @@
+ static void do_close_internal(struct netconn *conn);
+ #endif
+ 
++
+ #if LWIP_RAW
+ /**
+  * Receive callback function for RAW netconns.
+@@ -102,6 +103,9 @@
+       }
+     }
+ 
++    q->ts_sec = p->ts_sec;
++    q->ts_nsec = p->ts_nsec;
++
+     if (q != NULL) {
+       u16_t len;
+       buf = (struct netbuf *)memp_malloc(MEMP_NETBUF);
+@@ -117,6 +121,7 @@
+ 
+       len = q->tot_len;
+       if (sys_mbox_trypost(&conn->recvmbox, buf) != ERR_OK) {
++	      printf("recv_raw: cant post\n");
+         netbuf_delete(buf);
+         return 0;
+       } else {
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/api/sockets.c /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/api/sockets.c
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/api/sockets.c	2018-02-14 17:31:58.348594000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/api/sockets.c	2018-01-30 12:21:03.206351000 +0530
+@@ -64,6 +64,8 @@
+ struct lwip_sock {
+   /** sockets currently are built on netconns, each socket has one netconn */
+   struct netconn *conn;
++  /** bound netif index */
++  int ifindex;
+   /** data that was left from the previous read */
+   void *lastdata;
+   /** offset in the data that was left from the previous read */
+@@ -415,6 +417,18 @@
+     return -1;
+   }
+ 
++  if(sock->conn->type == NETCONN_RAW)
++  {
++    struct sockaddr_ll *sll;
++    sll = (struct sockaddr_ll *)name;
++
++    sock->ifindex = sll->sll_ifindex;
++
++    sock->conn->pcb.raw->ifindex = sll->sll_ifindex;
++
++    return 0;
++  }
++
+   /* check size, familiy and alignment of 'name' */
+   LWIP_ERROR("lwip_bind: invalid address", ((namelen == sizeof(struct sockaddr_in)) &&
+              ((name->sa_family) == AF_INET) && ((((mem_ptr_t)name) % 4) == 0)),
+@@ -553,6 +567,33 @@
+   return 0;
+ }
+ 
++
++int lwip_post_timer_event(int s)
++{
++  struct lwip_sock *sock;
++
++  sock = get_socket(s);
++  if (!sock) {
++    return -1;
++  }
++
++  API_EVENT(sock->conn, NETCONN_EVT_RCVPLUS, 1);
++  return 0;
++}
++
++int lwip_clear_timer_event(int s)
++{
++  struct lwip_sock *sock;
++
++  sock = get_socket(s);
++  if (!sock) {
++    return -1;
++  }
++
++  API_EVENT(sock->conn, NETCONN_EVT_RCVMINUS, 1);
++  return 0;
++}
++
+ int
+ lwip_recvfrom(int s, void *mem, size_t len, int flags,
+         struct sockaddr *from, socklen_t *fromlen)
+@@ -745,6 +786,72 @@
+ }
+ 
+ int
++lwip_send_with_ts(int s, const void *data, size_t size,
++                 struct timespec *ts, int flags)
++{
++  struct lwip_sock *sock;
++
++  sock = get_socket(s);
++  if (!sock) {
++    return -1;
++  }
++
++  if(sock->conn->type == NETCONN_RAW &&
++     raw_type_non_ip(sock->conn->pcb.raw) )
++  {
++     return raw_sendto_ll(sock->conn->pcb.raw, data, ts,
++			(u16)size, sock->ifindex);
++  }
++  else
++  {
++     return lwip_send(s, data, size, flags);
++  }
++}
++
++int lwip_recv_with_ts(int s, void *mem, size_t len, 
++                 struct timespec *ts, int flags)
++{
++  struct lwip_sock *sock;
++  void             *buf = NULL;
++  struct pbuf      *p;
++  u16_t  copylen;
++  err_t err;
++
++  sock = get_socket(s);
++  if (!sock) {
++    return -1;
++  }
++
++  if(sock->conn->type == NETCONN_RAW &&
++     raw_type_non_ip(sock->conn->pcb.raw) )
++  {
++	err = netconn_recv_raw(sock->conn, (struct netbuf **)&buf);
++
++	if(buf == NULL)
++	{
++		printf("lwip_recv_with_ts: no data\n");
++		return -1;
++	}
++	  
++        p = ((struct netbuf *)buf)->p;
++	
++	   if( len < p->len )
++	    copylen = len;
++	  else
++	    copylen = p->len;
++
++	MEMCPY(mem, p->payload, copylen );
++	ts->tv_sec  = p->ts_sec;
++	ts->tv_nsec = p->ts_nsec;
++	API_EVENT(sock->conn, NETCONN_EVT_RCVMINUS, p->tot_len);
++	netbuf_delete((struct netbuf *)buf);
++	return copylen;
++  }
++
++  return 0;
++}
++
++int
+ lwip_recv(int s, void *mem, size_t len, int flags)
+ {
+   return lwip_recvfrom(s, mem, len, flags, NULL, NULL);
+@@ -758,6 +865,7 @@
+   u8_t write_flags;
+   size_t written;
+ 
++
+   LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_send(%d, data=%p, size=%"SZT_F", flags=0x%x)\n",
+                               s, data, size, flags));
+ 
+@@ -804,6 +912,20 @@
+     return -1;
+   }
+ 
++  if(sock->conn->type == NETCONN_RAW &&
++     raw_type_non_ip(sock->conn->pcb.raw) )
++  {
++     struct sockaddr_ll *sll = NULL;
++     sll = (const struct sockaddr_ll *)(void*)to;
++
++     if(sll != NULL)
++        return raw_sendto_ll(sock->conn->pcb.raw, data, NULL,
++                            (u16)size, sll->sll_ifindex);
++     else
++        return raw_sendto_ll(sock->conn->pcb.raw, data, NULL,
++	                   (u16)size, sock->ifindex);
++  }
++
+   if (sock->conn->type == NETCONN_TCP) {
+ #if LWIP_TCP
+     return lwip_send(s, data, size, flags);
+@@ -1235,7 +1357,6 @@
+     *exceptset = lexceptset;
+   }
+ 
+-
+   return nready;
+ }
+ 
+@@ -1882,6 +2003,7 @@
+   case SOL_SOCKET:
+     switch (optname) {
+ 
++    case SO_ETHTYPE:
+     case SO_BROADCAST:
+     /* UNIMPL case SO_DEBUG: */
+     /* UNIMPL case SO_DONTROUTE: */
+@@ -2095,6 +2217,12 @@
+ /* Level: SOL_SOCKET */
+   case SOL_SOCKET:
+     switch (optname) {
++    
++    /* set eth type */
++    case SO_ETHTYPE:
++      if (sock->conn->type == NETCONN_RAW) {
++	sock->conn->pcb.raw->type = (u16_t) *(int *)optval;
++      }
+ 
+     /* The option flags */
+     case SO_BROADCAST:
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/core/raw.c /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/core/raw.c
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/core/raw.c	2018-02-14 17:31:58.390598000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/core/raw.c	2018-01-30 12:25:09.186107000 +0530
+@@ -55,6 +55,46 @@
+ /** The list of RAW PCBs */
+ static struct raw_pcb *raw_pcbs;
+ 
++u8_t 
++ptp_data_input(struct pbuf *p, u16_t type, struct netif *inp)
++{
++  struct raw_pcb *pcb, *prev;
++  u8_t eaten = 0;
++
++  LWIP_UNUSED_ARG(inp);
++
++  prev = NULL;
++  pcb = raw_pcbs;
++  /* loop through all raw pcbs until the packet is eaten by one */
++  /* this allows multiple pcbs to match against the packet by design */
++  while ((eaten == 0) && (pcb != NULL)) {
++    if ( ( PP_HTONS(pcb->type) == type ) && ( pcb->ifindex == inp->num ) )
++    {
++      /* receive callback function available? */
++      if (pcb->recv != NULL) {
++        /* the receive callback function did not eat the packet? */
++        if (pcb->recv(pcb->recv_arg, pcb, p, IP_ADDR_ANY) != 0) {
++          /* receive function ate the packet */
++          p = NULL;
++          eaten = 1;
++          if (prev != NULL) {
++          /* move the pcb to the front of raw_pcbs so that is
++             found faster next time */
++            prev->next = pcb->next;
++            pcb->next = raw_pcbs;
++            raw_pcbs = pcb;
++          }
++        }
++      }
++      /* no receive callback function was set for this raw PCB */
++      /* drop the packet */
++    }
++    prev = pcb;
++    pcb = pcb->next;
++  }
++  return eaten;
++}
++
+ /**
+  * Determine if in incoming IP packet is covered by a RAW PCB
+  * and if so, pass it to a user-provided receive callback function.
+@@ -187,6 +227,68 @@
+   pcb->recv_arg = recv_arg;
+ }
+ 
++struct netif *
++raw_get_netif(int ifno)
++{
++  struct netif *netif;
++
++  for (netif = netif_list; netif != NULL; netif = netif->next) {
++    /* network mask matches? */
++    if (netif_is_up(netif)) {
++      if (ifno == netif->num) {
++        /* return netif on which to forward IP packet */
++        return netif;
++      }
++    }
++  }
++
++  /* no matching netif found, use default netif */
++  return netif_default;
++}
++
++#define ETHTYPE_1588      0x88f7U  
++int raw_type_non_ip(struct raw_pcb *pcb)
++{
++   return (pcb->type == ETHTYPE_1588);
++}
++
++int raw_sendto_ll(struct raw_pcb *pcb, const void *data,
++		struct timespec *ts, u16_t short_size, int ifindex)
++{
++  struct netif *netif = NULL;
++  struct pbuf *p;
++  err_t err;
++
++  p = pbuf_alloc(PBUF_RAW, short_size, PBUF_POOL);
++
++  if (p == NULL) {
++    LWIP_DEBUGF(RAW_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_LEVEL_SERIOUS, ("raw_sendto: could not allocate header\n"));
++    return ERR_MEM;
++  }
++
++  pbuf_take(p, data, short_size);
++
++  netif = raw_get_netif(ifindex);
++
++  if(netif == NULL)
++  {
++    pbuf_free(p);
++    return -1;
++  }
++
++  err = netif->linkoutput(netif, p);
++
++  if(ts != NULL) 
++  {
++    ts->tv_sec = p->ts_sec;
++    ts->tv_nsec = p->ts_nsec;
++  }
++  pbuf_free(p);
++
++  return (err == ERR_OK ? (int)short_size : -1);
++  
++}
++
+ /**
+  * Send the raw IP packet to the given address. Note that actually you cannot
+  * modify the IP headers (this is inconsistent with the receive callback where
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/api.h /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/api.h
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/api.h	2018-02-14 17:31:58.440587000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/api.h	2018-01-30 11:52:49.803905000 +0530
+@@ -150,6 +150,8 @@
+   /** mbox where received packets are stored until they are fetched
+       by the netconn application thread (can grow quite big) */
+   sys_mbox_t recvmbox;
++  /** mbox for errqueue */
++  sys_mbox_t errmbox;
+ #if LWIP_TCP
+   /** mbox where new connections are stored until processed
+       by the application thread */
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/def.h /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/def.h
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/def.h	2018-02-14 17:31:58.446559000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/def.h	2018-01-30 11:52:56.650257500 +0530
+@@ -94,7 +94,9 @@
+ #define PP_HTONS(x) (x)
+ #define PP_NTOHS(x) (x)
+ #define PP_HTONL(x) (x)
++#define PP_HTONLL(x) (x)
+ #define PP_NTOHL(x) (x)
++#define PP_NTOHLL(x) (x)
+ #else /* BYTE_ORDER != BIG_ENDIAN */
+ #if LWIP_PLATFORM_BYTESWAP
+ #define lwip_htons(x) LWIP_PLATFORM_HTONS(x)
+@@ -118,7 +120,8 @@
+                      (((x) & 0xff0000UL) >> 8) | \
+                      (((x) & 0xff000000UL) >> 24))
+ #define PP_NTOHL(x) PP_HTONL(x)
+-
++#define PP_HTONLL(x)  (((u64_t)(PP_NTOHL((u32_t)((x << 32) >> 32))) << 32) | (u32_t)PP_NTOHL(((u32_t)(x >> 32))))
++#define PP_NTOHLL(x) PP_HTONLL(x)
+ #endif /* BYTE_ORDER == BIG_ENDIAN */
+ 
+ #ifdef __cplusplus
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/netif.h /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/netif.h
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/netif.h	2018-02-14 17:31:58.460583000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/netif.h	2018-01-30 12:32:16.540428000 +0530
+@@ -302,6 +302,8 @@
+ #define netif_get_hostname(netif) (((netif) != NULL) ? ((netif)->hostname) : NULL)
+ #endif /* LWIP_NETIF_HOSTNAME */
+ 
++#define netif_get_mac(netif, mac) do { if((netif) != NULL) { MEMCPY(mac, (netif)->hwaddr, 6); }}while(0)  
++
+ #if LWIP_IGMP
+ #define netif_set_igmp_mac_filter(netif, function) do { if((netif) != NULL) { (netif)->igmp_mac_filter = function; }}while(0)
+ #define netif_get_igmp_mac_filter(netif) (((netif) != NULL) ? ((netif)->igmp_mac_filter) : NULL)
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/pbuf.h /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/pbuf.h
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/pbuf.h	2018-02-14 17:31:58.465565000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/pbuf.h	2018-01-30 11:53:02.498216400 +0530
+@@ -76,6 +76,11 @@
+ /** indicates this pbuf includes a TCP FIN flag */
+ #define PBUF_FLAG_TCP_FIN   0x20U
+ 
++struct oob_buf {
++  u8_t payload[128]; /* fixed len payload */
++  u16_t len;
++};
++
+ struct pbuf {
+   /** next pbuf in singly linked pbuf chain */
+   struct pbuf *next;
+@@ -107,6 +112,9 @@
+    * the stack itself, or pbuf->next pointers from a chain.
+    */
+   u16_t ref;
++
++  u32_t ts_sec;
++  u32_t ts_nsec;
+ };
+ 
+ #if LWIP_SUPPORT_CUSTOM_PBUF
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/raw.h /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/raw.h
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/raw.h	2018-02-14 17:31:58.467562000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/raw.h	2018-01-30 12:23:45.337218000 +0530
+@@ -68,6 +68,9 @@
+ 
+   u8_t protocol;
+ 
++  u16_t type;
++
++  u8_t ifindex;
+   /** receive callback function */
+   raw_recv_fn recv;
+   /* user-supplied argument for the recv callback */
+@@ -85,6 +88,9 @@
+ err_t            raw_sendto     (struct raw_pcb *pcb, struct pbuf *p, ip_addr_t *ipaddr);
+ err_t            raw_send       (struct raw_pcb *pcb, struct pbuf *p);
+ 
++int raw_sendto_ll(struct raw_pcb *pcb, const void *data,
++		struct timespec *ts, u16_t short_size, int ifindex);
++
+ /* The following functions are the lower layer interface to RAW. */
+ u8_t             raw_input      (struct pbuf *p, struct netif *inp);
+ #define raw_init() /* Compatibility define, not init needed. */
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/sockets.h /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/sockets.h
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/lwip/sockets.h	2018-02-14 17:31:58.476578000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/lwip/sockets.h	2018-01-30 12:22:52.796922000 +0530
+@@ -56,6 +56,16 @@
+   char sin_zero[8];
+ };
+ 
++struct sockaddr_ll {
++  unsigned short sll_family;   /* Always AF_PACKET */
++  unsigned short sll_protocol; /* Physical-layer protocol */
++  int            sll_ifindex;  /* Interface number */
++  unsigned short sll_hatype;   /* ARP hardware type */
++  unsigned char  sll_pkttype;  /* Packet type */
++  unsigned char  sll_halen;    /* Length of address */
++  unsigned char  sll_addr[8];  /* Physical-layer address */
++};
++
+ struct sockaddr {
+   u8_t sa_len;
+   u8_t sa_family;
+@@ -102,6 +112,7 @@
+ #define SO_TYPE      0x1008    /* get socket type */
+ #define SO_CONTIMEO  0x1009    /* Unimplemented: connect timeout */
+ #define SO_NO_CHECK  0x100a    /* don't create UDP checksum */
++#define SO_ETHTYPE   0x1010
+ 
+ 
+ /*
+@@ -122,11 +133,13 @@
+ #define AF_INET         2
+ #define PF_INET         AF_INET
+ #define PF_UNSPEC       AF_UNSPEC
++#define	AF_PACKET       17
+ 
+ #define IPPROTO_IP      0
+ #define IPPROTO_TCP     6
+ #define IPPROTO_UDP     17
+ #define IPPROTO_UDPLITE 136
++#define IPPROTO_RAW     255
+ 
+ /* Flags we can use with send and recv. */
+ #define MSG_PEEK       0x01    /* Peeks at an incoming message */
+@@ -315,7 +328,7 @@
+   long    tv_usec;        /* and microseconds */
+ };
+ #endif /* LWIP_TIMEVAL_PRIVATE */
+-
++#define ETHTYPE_1588      0x88f7U
+ void lwip_socket_init(void);
+ 
+ int lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen);
+@@ -329,12 +342,16 @@
+ int lwip_connect(int s, const struct sockaddr *name, socklen_t namelen);
+ int lwip_listen(int s, int backlog);
+ int lwip_recv(int s, void *mem, size_t len, int flags);
++int lwip_recv_with_ts(int s, void *mem, size_t len, 
++                 struct timespec *ts, int flags);
+ int lwip_read(int s, void *mem, size_t len);
+ int lwip_recvfrom(int s, void *mem, size_t len, int flags,
+       struct sockaddr *from, socklen_t *fromlen);
+ int lwip_send(int s, const void *dataptr, size_t size, int flags);
+ int lwip_sendto(int s, const void *dataptr, size_t size, int flags,
+     const struct sockaddr *to, socklen_t tolen);
++int lwip_send_with_ts(int s, const void *data, size_t size,
++                 struct timespec *ts, int flags);
+ int lwip_socket(int domain, int type, int protocol);
+ int lwip_write(int s, const void *dataptr, size_t size);
+ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset,
+@@ -342,6 +359,8 @@
+ int lwip_ioctl(int s, long cmd, void *argp);
+ int lwip_fcntl(int s, int cmd, int val);
+ 
++int lwip_post_timer_event(int s);
++int lwip_clear_timer_event(int s);
+ #if LWIP_COMPAT_SOCKETS
+ #define accept(a,b,c)         lwip_accept(a,b,c)
+ #define bind(a,b,c)           lwip_bind(a,b,c)
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/netif/etharp.h /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/netif/etharp.h
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/include/netif/etharp.h	2018-02-14 17:31:58.491571000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/include/netif/etharp.h	2018-01-30 11:00:54.995995700 +0530
+@@ -154,6 +154,7 @@
+ #define ETHTYPE_VLAN      0x8100U
+ #define ETHTYPE_PPPOEDISC 0x8863U  /* PPP Over Ethernet Discovery Stage */
+ #define ETHTYPE_PPPOE     0x8864U  /* PPP Over Ethernet Session Stage */
++#define ETHTYPE_1588      0x88f7U  /* PPP Over Ethernet Session Stage */
+ 
+ /** MEMCPY-like macro to copy to/from struct eth_addr's that are local variables
+  * or known to be 32-bit aligned within the protocol header. */
+diff -uarN /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/netif/etharp.c /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/netif/etharp.c
+--- /proj/ipeng1/syeds/ptp4FreeRTOS-v2/freertos_patch/embeddedsw/ThirdParty/sw_services/lwip141/src/lwip-1.4.1/src/netif/etharp.c	2018-02-14 17:31:58.499563000 +0530
++++ /proj/ipeng1/syeds/new_freertos_opa/freertos901_xilinx_bsp_0/psu_cortexr5_0/libsrc/lwip141_v1_8/src/lwip-1.4.1/src/netif/etharp.c	2018-01-30 12:27:38.674106000 +0530
+@@ -1265,6 +1265,7 @@
+ }
+ #endif /* LWIP_ARP */
+ 
++
+ /**
+  * Process received ethernet frames. Using this function instead of directly
+  * calling ip_input and passing ARP frames through etharp in ethernetif_input,
+@@ -1382,6 +1383,16 @@
+       break;
+ #endif /* PPPOE_SUPPORT */
+ 
++//#if TSN_PTP
++#if 1
++    case PP_HTONS(ETHTYPE_1588): 
++      if (ptp_data_input(p, type, netif) == 0)
++      {
++         pbuf_free(p);
++      }
++      break;
++#endif
++
+     default:
+       ETHARP_STATS_INC(etharp.proterr);
+       ETHARP_STATS_INC(etharp.drop);
