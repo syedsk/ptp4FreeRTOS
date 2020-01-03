@@ -16,9 +16,10 @@ Ideally suited to run PTP4L on a dedicated core (say cortex-R5).
 ## 2. clock_adjtime calls functions from timer_1588.c(ptp_adjfreq/ptp_adjtime)
     These are currenly implemented as direct adjustment of RTC clock of Xilnx TSN HW
     This must be changed for the target HW/RTC
-## 3. Two new APIs lwip_send_with_ts and lwip_recv_with_ts to support timestamping.
+## 3. HW Timestamping Support 
+    Two new APIs lwip_send_with_ts and lwip_recv_with_ts to support timestamping.
     See lwip-1.4.1/src/api/sockets.c
-## 4. src/include/lwip/pbuf.h/struct pbuf has two new elements:
+    src/include/lwip/pbuf.h/struct pbuf has two new elements:
     u32_t ts_sec;
     u32_t ts_nsec;
     These values need to be set in your lwip emac driver implementation:
