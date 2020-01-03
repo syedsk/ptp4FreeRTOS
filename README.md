@@ -12,10 +12,11 @@ Ideally suited to run PTP4L on a dedicated core (say cortex-R5).
     Xilinx TSN IP reference design on zcu102 board. FreeRTOS running on R5. 
 
 # Porting Guide
-## 1. clock_adjtime is implemented in missing.h
-## 2. clock_adjtime calls functions from timer_1588.c(ptp_adjfreq/ptp_adjtime)
+## 1. clock_adjtime
+     clock_adjtime is implemented in missing.h
+     clock_adjtime calls functions from timer_1588.c(ptp_adjfreq/ptp_adjtime)
     These are currenly implemented as direct adjustment of RTC clock of Xilnx TSN HW
-    This must be changed for the target HW/RTC
+    This must be changed for the target HW/RTC.
 ## 3. HW Timestamping Support 
     Two new APIs lwip_send_with_ts and lwip_recv_with_ts to support timestamping.
     See lwip-1.4.1/src/api/sockets.c
