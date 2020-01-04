@@ -12,7 +12,7 @@ Ideally suited to run PTP4L on a dedicated core (say cortex-R5).
     Xilinx TSN IP reference design on zcu102 board. FreeRTOS running on R5. 
 
 # Building
-   See the template makefile. You need to cross-compile for you target 
+   See the template makefile. You need to cross-compile for your target arch.
    Link LWiP(with the patches) and freertos libraries to generate freertos elf 
    There is a template emac_driver (which registers two mac netif)
 
