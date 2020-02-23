@@ -22,7 +22,7 @@ Ideally suited to run PTP4L on a dedicated core (say cortex-R5).
      clock_adjtime calls functions from timer_1588.c(ptp_adjfreq/ptp_adjtime)
     These are currenly implemented as direct adjustment of RTC clock of Xilnx TSN HW
     This must be changed for the target HW/RTC.
-## 3. HW Timestamping Support 
+## 2. HW Timestamping Support 
     Two new APIs lwip_send_with_ts and lwip_recv_with_ts to support timestamping.
     See lwip-1.4.1/src/api/sockets.c
     lwip-1.4.1/src/include/lwip/pbuf.h/struct pbuf has two new elements:
@@ -31,13 +31,14 @@ Ideally suited to run PTP4L on a dedicated core (say cortex-R5).
     These values need to be set in your lwip emac driver implementation:
     while doing RX via netif->input()
     while doing TX via low_level_output() 
-## 5. Polling mechanism with Lwip
+## 3. Polling mechanism with Lwip
     ptp4l uses poll() system call to wait for timer events as well as network events. 
     Lwip has polling only for socket fd. The timers in freertos are implemented as 
     psuedo socket so same select() call can be used for network & timer events
     
     See linuxptp-1.6/freertos_poll.c/freertos_poll()
-    See lwip-1.4.1/src/api/sockets.c/lwip_post_timer_event() and linuxptp-1.6/freertos_timers.c/timer_callback()
+    See lwip-1.4.1/src/api/sockets.c/lwip_post_timer_event() and
+        linuxptp-1.6/freertos_timers.c/timer_callback()
  
 
     
